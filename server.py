@@ -3,13 +3,14 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 ACESTEP_API = "http://localhost:8001"
-ACESTEP_OUTPUTS = Path.home() / "Projects/ACE-Step-1.5/gradio_outputs"
+ACESTEP_OUTPUTS = Path.home() / "Projects/ACE-Step-1.5/.cache/acestep/tmp/api_audio"
 HERE = Path(__file__).parent
 HISTORY_FILE = HERE / "history.json"
 
@@ -65,7 +66,10 @@ async def serve_audio(filename: str):
     audio_path = ACESTEP_OUTPUTS / safe_name
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
-    return FileResponse(str(audio_path), media_type="audio/mpeg")
+    suffix = audio_path.suffix.lower()
+    media_types = {".mp3": "audio/mpeg", ".flac": "audio/flac", ".wav": "audio/wav", ".opus": "audio/ogg"}
+    media_type = media_types.get(suffix, "audio/mpeg")
+    return FileResponse(str(audio_path), media_type=media_type)
 
 
 @app.post("/api/generate")
@@ -120,79 +124,85 @@ async def stream(job_id: str):
                 return
 
             job_data = resp.json()
-            acestep_job_id = job_data.get("data", {}).get("job_id") or job_data.get("job_id")
+            d = job_data.get("data", job_data)
+            acestep_job_id = d.get("task_id") or d.get("job_id")
             if not acestep_job_id:
-                yield sse({"stage": "error", "message": "No job_id returned by ACE-Step"})
+                yield sse({"stage": "error", "message": f"No task_id in ACE-Step response: {job_data}"})
                 return
 
             yield sse({"stage": "generating", "message": "Generating...", "progress": 0})
 
-            # Poll for completion
+            # Poll for completion using /query_result
             for _ in range(300):
                 await asyncio.sleep(1)
                 try:
-                    poll = await client.get(f"{ACESTEP_API}/query_task/{acestep_job_id}")
-                    result = poll.json()
+                    poll = await client.post(
+                        f"{ACESTEP_API}/query_result",
+                        json={"task_id_list": json.dumps([acestep_job_id])},
+                    )
+                    outer = poll.json()
                 except Exception:
                     continue
 
-                data = result.get("data", {})
-                # Handle both list and dict responses
-                if isinstance(data, list):
-                    data = data[0] if data else {}
+                items = outer.get("data", [])
+                if not items:
+                    continue
 
-                api_status = data.get("status", "")
-                stage = data.get("stage", "")
-                progress = data.get("progress", 0)
+                item = items[0]
+                item_status = item.get("status")  # 1=succeeded, 2=failed
+                result_str = item.get("result", "")
 
-                # Map numeric status to string if needed
-                if isinstance(api_status, int):
-                    api_status = {1: "running", 2: "succeeded", 3: "failed"}.get(api_status, "running")
+                # Parse inner result JSON string
+                try:
+                    result_list = json.loads(result_str) if result_str else []
+                    inner = result_list[0] if result_list else {}
+                except Exception:
+                    inner = {}
 
-                # Emit download detection
+                stage = inner.get("stage", "")
+                progress = float(inner.get("progress", 0))
+
                 if "download" in str(stage).lower():
                     yield sse({"stage": "downloading", "message": "Downloading model files...", "progress": progress})
                     continue
 
-                if api_status == "succeeded" or stage == "succeeded":
-                    # Find audio path
-                    audio_path = (
-                        data.get("audio_path")
-                        or data.get("file")
-                        or (data.get("results") or [{}])[0].get("audio_path", "")
-                        or (data.get("results") or [{}])[0].get("file", "")
-                    )
+                if stage == "succeeded" or item_status == 1:
+                    # Extract audio file path from the /v1/audio?path=... URL
+                    file_url = inner.get("file", "")
+                    if "path=" in file_url:
+                        audio_path = unquote(file_url.split("path=")[-1])
+                    else:
+                        audio_path = file_url
                     filename = Path(audio_path).name if audio_path else ""
                     if not filename:
-                        yield sse({"stage": "error", "message": "Generation succeeded but no audio file returned"})
+                        yield sse({"stage": "error", "message": "No audio file in result"})
                         return
 
-                    # Persist to history
+                    metas = inner.get("metas") or {}
                     entry = {
                         "id": track_id,
                         "created_at": datetime.now(timezone.utc).isoformat(),
                         "mode": mode,
-                        "prompt": payload.get("prompt", ""),
+                        "prompt": inner.get("prompt") or payload.get("prompt", ""),
                         "params": payload,
                         "audio_file": filename,
-                        "duration": data.get("duration") or (data.get("metas") or {}).get("duration") or 0,
+                        "duration": metas.get("duration") or 0,
                     }
                     history = load_history()
                     history.insert(0, entry)
                     save_history(history)
 
-                    del _jobs[job_id]
+                    _jobs.pop(job_id, None)
                     yield sse({"stage": "succeeded", "message": "Done!", "progress": 1, "track": entry, "audio_url": f"/audio/{filename}"})
                     return
 
-                if api_status in ("failed", "error") or stage == "failed":
-                    yield sse({"stage": "error", "message": f"Generation failed: {data.get('error', stage)}"})
+                if item_status == 2 or stage in ("failed", "error"):
+                    yield sse({"stage": "error", "message": f"Generation failed: {inner.get('error', stage or 'unknown')}"})
                     return
 
-                # Emit progress for running jobs
                 if progress:
-                    pct = int(float(progress) * 100)
-                    yield sse({"stage": "generating", "message": f"Generating... {pct}%", "progress": float(progress)})
+                    pct = int(progress * 100)
+                    yield sse({"stage": "generating", "message": f"Generating... {pct}%", "progress": progress})
 
         yield sse({"stage": "error", "message": "Generation timed out after 5 minutes"})
 
