@@ -294,11 +294,47 @@
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Status banner ── */
+    #status-banner {
+      display: none;
+      grid-area: create;
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      background: #2a2000;
+      border-bottom: 1px solid #554400;
+      color: #ffcc44;
+      font-size: 0.8rem;
+      padding: 8px 14px;
+      z-index: 10;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #status-banner.visible { display: flex; }
+
+    /* ── Progress bar on card ── */
+    .track-progress {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    .track-progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.4s;
+      width: 0%;
+    }
   </style>
 </head>
 <body>
 
-<aside id="create-panel">
+<div id="status-banner"><span class="spinner" style="border-top-color:#ffcc44"></span><span id="status-text"></span></div>
+<aside id="create-panel" style="position:relative">
   <div class="logo">◆ ACE-Step</div>
 
   <div class="mode-toggle">
@@ -434,11 +470,7 @@
   }
 
   function escHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   function download(filename) {
@@ -453,12 +485,9 @@
     const card = document.createElement('div');
     card.className = 'track-card' + (track.generating ? ' generating' : '');
     card.dataset.id = track.id;
+    if (!track.generating) card.onclick = () => loadTrack(track);
 
-    if (!track.generating) {
-      card.onclick = () => loadTrack(track);
-    }
-
-    const dur = track.duration ? fmt(track.duration) : (track.generating ? '...' : '?');
+    const dur = track.duration ? fmt(track.duration) : (track.generating ? '' : '?');
     const meta = track.params?.lyrics ? 'Custom mode' : 'Simple mode';
     const title = escHtml((track.prompt || 'Generating...').slice(0, 80));
 
@@ -468,7 +497,8 @@
       </button>
       <div class="track-info">
         <div class="track-title">${title}</div>
-        <div class="track-meta">${meta}</div>
+        <div class="track-meta track-status">${track.generating ? 'Starting...' : meta}</div>
+        ${track.generating ? '<div class="track-progress"><div class="track-progress-fill"></div></div>' : ''}
       </div>
       <div class="track-duration">${dur}</div>
       ${track.generating ? '' : `<button class="btn-download" onclick="event.stopPropagation(); download('${escHtml(track.audio_file)}')">⬇</button>`}
@@ -480,6 +510,41 @@
     if (prepend) list.prepend(card);
     else list.appendChild(card);
     return card;
+  }
+
+  function updateCard(card, message, progress) {
+    const statusEl = card.querySelector('.track-status');
+    if (statusEl) statusEl.textContent = message;
+    const fill = card.querySelector('.track-progress-fill');
+    if (fill && progress != null) fill.style.width = `${Math.round(progress * 100)}%`;
+  }
+
+  // ── Status banner (model load state) ──
+  async function checkStatus() {
+    try {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      const d = data.data || data;
+      const banner = document.getElementById('status-banner');
+      const text = document.getElementById('status-text');
+      if (d.status === 'unreachable') {
+        text.textContent = 'ACE-Step API is not running on port 8001';
+        banner.classList.add('visible');
+      } else if (!d.models_initialized) {
+        text.textContent = 'Models not loaded — first generation will trigger download & load (~1–2 min)';
+        banner.classList.add('visible');
+        // Re-check every 10s until loaded
+        setTimeout(async () => {
+          const r2 = await fetch('/api/status');
+          const d2 = (await r2.json()).data || (await r2.json());
+          if (d2.models_initialized) banner.classList.remove('visible');
+        }, 10000);
+      } else {
+        banner.classList.remove('visible');
+      }
+    } catch (e) {
+      // server not up yet, ignore
+    }
   }
 
   async function loadHistory() {
@@ -519,24 +584,61 @@
       if (bpm) payload.bpm = parseInt(bpm);
     }
 
-    const placeholder = { id: 'pending-' + Date.now(), prompt: payload.prompt, generating: true, params: payload };
+    // Create placeholder card
+    const placeholderId = 'pending-' + Date.now();
+    const placeholder = { id: placeholderId, prompt: payload.prompt, generating: true, params: payload };
     const card = renderTrack(placeholder, true);
 
     try {
+      // POST to enqueue, get job_id
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(await res.text());
-      const { track } = await res.json();
-      card.remove();
-      renderTrack(track, true);
-      loadTrack(track);
+      const { job_id } = await res.json();
+
+      // Open SSE stream
+      await new Promise((resolve, reject) => {
+        const es = new EventSource(`/api/stream/${job_id}`);
+
+        es.onmessage = (e) => {
+          const event = JSON.parse(e.data);
+          const { stage, message, progress, track } = event;
+
+          if (stage === 'succeeded' && track) {
+            es.close();
+            card.remove();
+            window.__tracks[track.id] = track;
+            renderTrack(track, true);
+            loadTrack(track);
+            // Hide banner if models now loaded
+            document.getElementById('status-banner').classList.remove('visible');
+            resolve();
+          } else if (stage === 'error') {
+            es.close();
+            updateCard(card, '⚠ ' + message, null);
+            card.classList.remove('generating');
+            card.querySelector('.play-btn').innerHTML = '✕';
+            reject(new Error(message));
+          } else {
+            updateCard(card, message, progress);
+            // Show banner for download/load stages
+            if (stage === 'downloading' || stage === 'loading') {
+              const text = document.getElementById('status-text');
+              text.textContent = message;
+              document.getElementById('status-banner').classList.add('visible');
+            }
+          }
+        };
+
+        es.onerror = () => {
+          es.close();
+          reject(new Error('SSE connection lost'));
+        };
+      });
     } catch (e) {
-      card.querySelector('.track-title').textContent = '⚠ Generation failed';
-      card.classList.remove('generating');
-      card.querySelector('.play-btn').innerHTML = '✕';
       console.error(e);
     }
 
@@ -550,6 +652,8 @@
     btn.textContent = 'Generate';
   }
 
+  // Boot
+  checkStatus();
   loadHistory();
 </script>
 </body>
