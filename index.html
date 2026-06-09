@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACE-Step</title>
+  <script src="https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --surface2: #242424;
+      --border: #2e2e2e;
+      --accent: #6c63ff;
+      --accent-hover: #5a52e0;
+      --text: #f0f0f0;
+      --text-muted: #888;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 1fr 90px;
+      grid-template-columns: 320px 1fr;
+      grid-template-areas:
+        "create library"
+        "player player";
+      overflow: hidden;
+    }
+
+    #create-panel {
+      grid-area: create;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      gap: 16px;
+      overflow-y: auto;
+    }
+
+    .logo {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.5px;
+    }
+
+    .mode-toggle {
+      display: flex;
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 2px;
+    }
+
+    .mode-toggle button {
+      flex: 1;
+      padding: 7px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+
+    .mode-toggle button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    #simple-form, #custom-form { display: flex; flex-direction: column; gap: 12px; }
+    #custom-form { display: none; }
+
+    label { font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    textarea, input[type="text"], input[type="number"], select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    textarea:focus, input:focus, select:focus { border-color: var(--accent); }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--surface2);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .toggle-row span { font-size: 0.9rem; }
+
+    .switch { position: relative; width: 40px; height: 22px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+
+    .slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 22px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; top: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+
+    input:checked + .slider { background: var(--accent); }
+    input:checked + .slider::before { transform: translateX(18px); }
+
+    .duration-row { display: flex; flex-direction: column; gap: 5px; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+      padding: 0;
+      border: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+    }
+
+    .duration-label { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted); }
+
+    .btn-generate {
+      padding: 13px;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      margin-top: auto;
+    }
+
+    .btn-generate:hover { background: var(--accent-hover); }
+    .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #library-panel {
+      grid-area: library;
+      background: var(--bg);
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .library-header { font-size: 1rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+
+    .track-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .track-card:hover { border-color: var(--accent); background: var(--surface2); }
+    .track-card.active { border-color: var(--accent); }
+    .track-card.generating { opacity: 0.6; cursor: default; }
+
+    .play-btn {
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      color: white;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+
+    .play-btn:hover { background: var(--accent-hover); }
+
+    .track-info { flex: 1; min-width: 0; }
+    .track-title { font-size: 0.9rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .track-meta { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+
+    .track-duration { font-size: 0.82rem; color: var(--text-muted); flex-shrink: 0; }
+
+    .btn-download {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 6px;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn-download:hover { border-color: var(--accent); color: var(--accent); }
+
+    #player-bar {
+      grid-area: player;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 24px;
+    }
+
+    #player-play {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      color: white;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    #player-play:hover { background: var(--accent-hover); }
+
+    #player-title {
+      font-size: 0.85rem;
+      font-weight: 500;
+      min-width: 160px;
+      max-width: 220px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #waveform { flex: 1; height: 48px; }
+
+    #player-time { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<aside id="create-panel">
+  <div class="logo">◆ ACE-Step</div>
+
+  <div class="mode-toggle">
+    <button class="active" onclick="setMode('simple')">Simple</button>
+    <button onclick="setMode('custom')">Custom</button>
+  </div>
+
+  <div id="simple-form">
+    <div class="field">
+      <label>Describe your song</label>
+      <textarea id="simple-prompt" rows="6" placeholder="An upbeat lo-fi hip hop track with jazzy chords, soft piano, and vinyl crackle..."></textarea>
+    </div>
+  </div>
+
+  <div id="custom-form">
+    <div class="field">
+      <label>Style</label>
+      <input type="text" id="custom-style" placeholder="lo-fi hip hop, jazzy, chill...">
+    </div>
+    <div class="field">
+      <label>Lyrics</label>
+      <textarea id="custom-lyrics" rows="5" placeholder="[Verse 1]&#10;Your lyrics here..."></textarea>
+    </div>
+    <div class="field">
+      <label>Tags</label>
+      <input type="text" id="custom-tags" placeholder="piano, vinyl crackle, soft drums">
+    </div>
+    <div class="field">
+      <label>Negative (avoid)</label>
+      <input type="text" id="custom-negative" placeholder="distortion, metal, aggressive">
+    </div>
+    <div class="duration-row">
+      <label>Duration: <span id="duration-val">60</span>s</label>
+      <input type="range" id="custom-duration" min="15" max="240" value="60"
+             oninput="document.getElementById('duration-val').textContent = this.value">
+      <div class="duration-label"><span>15s</span><span>240s</span></div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>BPM</label>
+        <input type="number" id="custom-bpm" placeholder="120" min="40" max="300">
+      </div>
+      <div class="field">
+        <label>Format</label>
+        <select id="custom-format">
+          <option value="mp3">MP3</option>
+          <option value="flac">FLAC</option>
+          <option value="wav">WAV</option>
+        </select>
+      </div>
+    </div>
+    <div class="toggle-row">
+      <span>Wide Stereo</span>
+      <label class="switch">
+        <input type="checkbox" id="custom-stereo">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <button class="btn-generate" id="btn-generate" onclick="generate()">Generate</button>
+</aside>
+
+<main id="library-panel">
+  <div class="library-header">Library</div>
+  <div id="track-list"></div>
+</main>
+
+<footer id="player-bar">
+  <button id="player-play" onclick="togglePlay()">▶</button>
+  <div id="player-title" style="color:var(--text-muted)">No track loaded</div>
+  <div id="waveform"></div>
+  <div id="player-time">0:00 / 0:00</div>
+</footer>
+
+<script>
+  let currentMode = 'simple';
+  let isGenerating = false;
+  let currentTrack = null;
+
+  const wavesurfer = WaveSurfer.create({
+    container: '#waveform',
+    waveColor: '#444',
+    progressColor: '#6c63ff',
+    height: 48,
+    barWidth: 2,
+    barGap: 1,
+    barRadius: 2,
+    interact: true,
+    hideScrollbar: true,
+  });
+
+  wavesurfer.on('timeupdate', (t) => {
+    document.getElementById('player-time').textContent =
+      `${fmt(t)} / ${fmt(wavesurfer.getDuration())}`;
+  });
+
+  wavesurfer.on('finish', () => {
+    document.getElementById('player-play').textContent = '▶';
+  });
+
+  function fmt(s) {
+    s = Math.floor(s || 0);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function setMode(mode) {
+    currentMode = mode;
+    document.getElementById('simple-form').style.display = mode === 'simple' ? 'flex' : 'none';
+    document.getElementById('custom-form').style.display = mode === 'custom' ? 'flex' : 'none';
+    document.querySelectorAll('.mode-toggle button').forEach((b, i) => {
+      b.classList.toggle('active', (i === 0 && mode === 'simple') || (i === 1 && mode === 'custom'));
+    });
+  }
+
+  function togglePlay() {
+    if (!wavesurfer.getDuration()) return;
+    wavesurfer.playPause();
+    document.getElementById('player-play').textContent = wavesurfer.isPlaying() ? '⏸' : '▶';
+  }
+
+  function loadTrack(track) {
+    currentTrack = track;
+    document.getElementById('player-title').textContent = (track.prompt || 'Untitled').slice(0, 60);
+    document.getElementById('player-play').textContent = '▶';
+    wavesurfer.load('/audio/' + track.audio_file);
+    wavesurfer.once('ready', () => {
+      wavesurfer.play();
+      document.getElementById('player-play').textContent = '⏸';
+    });
+    document.querySelectorAll('.track-card').forEach(c => c.classList.remove('active'));
+    document.querySelector(`[data-id="${track.id}"]`)?.classList.add('active');
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function download(filename) {
+    const a = document.createElement('a');
+    a.href = '/audio/' + filename;
+    a.download = filename;
+    a.click();
+  }
+
+  function renderTrack(track, prepend = false) {
+    const list = document.getElementById('track-list');
+    const card = document.createElement('div');
+    card.className = 'track-card' + (track.generating ? ' generating' : '');
+    card.dataset.id = track.id;
+
+    if (!track.generating) {
+      card.onclick = () => loadTrack(track);
+    }
+
+    const dur = track.duration ? fmt(track.duration) : (track.generating ? '...' : '?');
+    const meta = track.params?.lyrics ? 'Custom mode' : 'Simple mode';
+    const title = escHtml((track.prompt || 'Generating...').slice(0, 80));
+
+    card.innerHTML = `
+      <button class="play-btn" ${track.generating ? 'disabled' : `onclick="event.stopPropagation(); loadTrack(window.__tracks['${track.id}'])"`}>
+        ${track.generating ? '<span class="spinner"></span>' : '▶'}
+      </button>
+      <div class="track-info">
+        <div class="track-title">${title}</div>
+        <div class="track-meta">${meta}</div>
+      </div>
+      <div class="track-duration">${dur}</div>
+      ${track.generating ? '' : `<button class="btn-download" onclick="event.stopPropagation(); download('${escHtml(track.audio_file)}')">⬇</button>`}
+    `;
+
+    window.__tracks = window.__tracks || {};
+    window.__tracks[track.id] = track;
+
+    if (prepend) list.prepend(card);
+    else list.appendChild(card);
+    return card;
+  }
+
+  async function loadHistory() {
+    const res = await fetch('/api/history');
+    const tracks = await res.json();
+    tracks.forEach(t => renderTrack(t));
+  }
+
+  async function generate() {
+    if (isGenerating) return;
+    isGenerating = true;
+
+    const btn = document.getElementById('btn-generate');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Generating...';
+
+    let payload;
+    if (currentMode === 'simple') {
+      const prompt = document.getElementById('simple-prompt').value.trim();
+      if (!prompt) { resetBtn(); return; }
+      payload = { prompt, thinking: true, _mode: 'simple' };
+    } else {
+      const style = document.getElementById('custom-style').value.trim();
+      const tags = document.getElementById('custom-tags').value.trim();
+      let prompt = [style, tags].filter(Boolean).join(', ');
+      if (document.getElementById('custom-stereo').checked) prompt += ', wide stereo';
+      const bpm = document.getElementById('custom-bpm').value;
+      payload = {
+        prompt,
+        lyrics: document.getElementById('custom-lyrics').value,
+        lm_negative_prompt: document.getElementById('custom-negative').value || 'NO USER INPUT',
+        audio_duration: parseFloat(document.getElementById('custom-duration').value),
+        audio_format: document.getElementById('custom-format').value,
+        thinking: false,
+        _mode: 'custom',
+      };
+      if (bpm) payload.bpm = parseInt(bpm);
+    }
+
+    const placeholder = { id: 'pending-' + Date.now(), prompt: payload.prompt, generating: true, params: payload };
+    const card = renderTrack(placeholder, true);
+
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { track } = await res.json();
+      card.remove();
+      renderTrack(track, true);
+      loadTrack(track);
+    } catch (e) {
+      card.querySelector('.track-title').textContent = '⚠ Generation failed';
+      card.classList.remove('generating');
+      card.querySelector('.play-btn').innerHTML = '✕';
+      console.error(e);
+    }
+
+    resetBtn();
+  }
+
+  function resetBtn() {
+    isGenerating = false;
+    const btn = document.getElementById('btn-generate');
+    btn.disabled = false;
+    btn.textContent = 'Generate';
+  }
+
+  loadHistory();
+</script>
+</body>
+</html>
