@@ -269,6 +269,49 @@
     .track-menu button.danger { color: #ff6b6b; }
     .track-menu button.danger:hover { background: rgba(255,107,107,0.12); }
 
+    .tip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 15px; height: 15px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      font-style: normal;
+      font-weight: 500;
+      cursor: help;
+      margin-left: 6px;
+      position: relative;
+      vertical-align: middle;
+    }
+    .tip:hover { background: var(--accent); color: #fff; }
+    .tip::after {
+      content: attr(data-tip);
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 8px 11px;
+      border-radius: 6px;
+      font-size: 0.76rem;
+      font-weight: 400;
+      color: var(--text);
+      width: 240px;
+      white-space: normal;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+      z-index: 100;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+      text-align: left;
+      line-height: 1.45;
+    }
+    .tip:hover::after { opacity: 1; }
+    .tip.wide::after { width: 300px; }
+
     #player-bar {
       grid-area: player;
       background: var(--surface);
@@ -371,43 +414,43 @@
 
   <div id="simple-form">
     <div class="field">
-      <label>Describe your song</label>
+      <label>Describe your song <span class="tip" data-tip="A short vibe description. The 4B LM expands this into a full caption, picks BPM/key/structure, and drafts lyrics. Best for exploring — just describe the mood and instruments.">ⓘ</span></label>
       <textarea id="simple-prompt" rows="6" placeholder="An upbeat lo-fi hip hop track with jazzy chords, soft piano, and vinyl crackle..."></textarea>
     </div>
   </div>
 
   <div id="custom-form">
     <div class="field">
-      <label>Description / Caption</label>
+      <label>Description / Caption <span class="tip" data-tip="Your detailed musical description. With LM enhance OFF, this goes straight to the diffusion model — be specific about instruments, mood, arrangement.">ⓘ</span></label>
       <textarea id="custom-caption" rows="4" placeholder="A driving lo-fi hip hop track with jazzy Rhodes piano, dusty drums, and warm vinyl crackle..."></textarea>
     </div>
     <div class="field">
-      <label>Tags <span style="color: var(--text-muted); font-weight: 400;">(comma-separated, appended to description)</span></label>
+      <label>Tags <span class="tip" data-tip="Comma-separated style/instrument keywords. Appended to the Description above before sending. Good for sharpening genre cues.">ⓘ</span></label>
       <input type="text" id="custom-tags" placeholder="piano, vinyl crackle, soft drums">
     </div>
     <div class="field">
-      <label>Lyrics <span style="color: var(--text-muted); font-weight: 400;">(leave empty for instrumental)</span></label>
+      <label>Lyrics <span class="tip" data-tip="Use [Verse], [Chorus], [Bridge] brackets to give the model structural anchors. Leave empty for instrumental (auto-detected). Lyrics also work as structure hints even on instrumentals.">ⓘ</span></label>
       <textarea id="custom-lyrics" rows="5" placeholder="[Verse 1]&#10;Your lyrics here..."></textarea>
     </div>
     <div class="duration-row">
-      <label>Duration: <span id="duration-val">60</span>s</label>
+      <label>Duration: <span id="duration-val">60</span>s <span class="tip" data-tip="Output length in seconds. Longer durations need more diffusion steps and VRAM to stay coherent.">ⓘ</span></label>
       <input type="range" id="custom-duration" min="15" max="240" value="60"
              oninput="document.getElementById('duration-val').textContent = this.value">
       <div class="duration-label"><span>15s</span><span>240s</span></div>
     </div>
     <div class="row">
       <div class="field">
-        <label>BPM</label>
+        <label>BPM <span class="tip" data-tip="Tempo in beats per minute. Leave blank to let the model choose based on the description.">ⓘ</span></label>
         <input type="number" id="custom-bpm" placeholder="auto" min="40" max="300">
       </div>
       <div class="field">
-        <label>Key</label>
+        <label>Key <span class="tip" data-tip="Musical key (e.g. 'C major', 'A minor', 'F# dorian'). Leave blank for auto.">ⓘ</span></label>
         <input type="text" id="custom-key" placeholder="auto (e.g. C major)">
       </div>
     </div>
     <div class="row">
       <div class="field">
-        <label>Time signature</label>
+        <label>Time signature <span class="tip" data-tip="Beats per measure. 4/4 = pop/rock/most music. 3/4 = waltz. 6/8 = ballads, shuffle.">ⓘ</span></label>
         <select id="custom-timesig">
           <option value="">auto</option>
           <option value="3">3/4</option>
@@ -416,7 +459,7 @@
         </select>
       </div>
       <div class="field">
-        <label>Vocal language</label>
+        <label>Vocal language <span class="tip" data-tip="Language for any vocals. Match this to the language your lyrics are written in.">ⓘ</span></label>
         <select id="custom-language">
           <option value="en" selected>English</option>
           <option value="es">Spanish</option>
@@ -431,11 +474,11 @@
     </div>
     <div class="row">
       <div class="field">
-        <label>Steps <span style="color: var(--text-muted); font-weight: 400;">(quality)</span></label>
+        <label>Steps <span class="tip" data-tip="Diffusion sampling steps. 8 = draft. 50 = recommended. 70–100 = extra polish. Above 100 hits diminishing returns. More steps = slower but cleaner.">ⓘ</span></label>
         <input type="number" id="custom-steps" value="50" min="8" max="200">
       </div>
       <div class="field">
-        <label>Format</label>
+        <label>Format <span class="tip" data-tip="WAV = uncompressed lossless. FLAC = lossless compressed. MP3 = small lossy. WAV is best for editing later.">ⓘ</span></label>
         <select id="custom-format">
           <option value="wav" selected>WAV</option>
           <option value="flac">FLAC</option>
@@ -444,14 +487,14 @@
       </div>
     </div>
     <div class="toggle-row">
-      <span>Wide Stereo</span>
+      <span>Wide Stereo <span class="tip" data-tip="Appends 'wide stereo' to your prompt, biasing the model toward a roomier, more spread-out mix.">ⓘ</span></span>
       <label class="switch">
         <input type="checkbox" id="custom-stereo">
         <span class="slider"></span>
       </label>
     </div>
     <div class="toggle-row">
-      <span>Use LM to enhance prompt</span>
+      <span>Use LM to enhance prompt <span class="tip wide" data-tip="OFF (default): your Caption + Tags go straight to the diffusion model — tight control, faithful to what you wrote. ON: the 4B LM rewrites your prompt with its own caption, BPM, key, and structure — useful for vague prompts but can override your choices. Rule of thumb: more fields you've filled in, the more you want this OFF.">ⓘ</span></span>
       <label class="switch">
         <input type="checkbox" id="custom-thinking">
         <span class="slider"></span>
