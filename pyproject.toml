@@ -10,3 +10,8 @@ dependencies = [
 
 [project.scripts]
 ace-ui = "server:main"
+
+[dependency-groups]
+dev = [
+    "playwright>=1.60.0",
+]

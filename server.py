@@ -1,5 +1,7 @@
 import asyncio
 import json
+import subprocess
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +10,7 @@ from urllib.parse import unquote
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 ACESTEP_API = "http://localhost:8001"
 ACESTEP_OUTPUTS = Path.home() / "Projects/ACE-Step-1.5/.cache/acestep/tmp/api_audio"
@@ -60,16 +63,70 @@ async def get_history():
     return load_history()
 
 
+@app.delete("/api/track/{track_id}")
+async def delete_track(track_id: str):
+    history = load_history()
+    idx = next((i for i, e in enumerate(history) if e.get("id") == track_id), None)
+    if idx is None:
+        raise HTTPException(status_code=404, detail="Track not found")
+    entry = history.pop(idx)
+    save_history(history)
+    audio = ACESTEP_OUTPUTS / Path(entry.get("audio_file", "")).name
+    if audio.exists():
+        audio.unlink()
+    return {"deleted": track_id}
+
+
+@app.patch("/api/track/{track_id}")
+async def patch_track(track_id: str, body: dict):
+    history = load_history()
+    entry = next((e for e in history if e.get("id") == track_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Track not found")
+    if "prompt" in body:
+        entry["prompt"] = str(body["prompt"])
+    save_history(history)
+    return entry
+
+
+SUPPORTED_FORMATS = {
+    "mp3": ("audio/mpeg", ["-c:a", "libmp3lame", "-b:a", "192k"]),
+    "wav": ("audio/wav", ["-c:a", "pcm_s16le"]),
+    "flac": ("audio/flac", ["-c:a", "flac"]),
+}
+
+
 @app.get("/audio/{filename}")
-async def serve_audio(filename: str):
+async def serve_audio(filename: str, format: str | None = None):
     safe_name = Path(filename).name
     audio_path = ACESTEP_OUTPUTS / safe_name
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
-    suffix = audio_path.suffix.lower()
-    media_types = {".mp3": "audio/mpeg", ".flac": "audio/flac", ".wav": "audio/wav", ".opus": "audio/ogg"}
-    media_type = media_types.get(suffix, "audio/mpeg")
-    return FileResponse(str(audio_path), media_type=media_type)
+    src_ext = audio_path.suffix.lower().lstrip(".")
+    media_types = {"mp3": "audio/mpeg", "flac": "audio/flac", "wav": "audio/wav", "opus": "audio/ogg"}
+
+    if format is None or format == src_ext:
+        return FileResponse(str(audio_path), media_type=media_types.get(src_ext, "audio/mpeg"))
+
+    if format not in SUPPORTED_FORMATS:
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {format}")
+
+    mime, codec_args = SUPPORTED_FORMATS[format]
+    tmp = tempfile.NamedTemporaryFile(suffix=f".{format}", delete=False)
+    tmp.close()
+    cmd = ["ffmpeg", "-y", "-i", str(audio_path), *codec_args, tmp.name]
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        Path(tmp.name).unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"ffmpeg failed: {stderr.decode()[:200]}")
+    download_name = f"{audio_path.stem}.{format}"
+    return FileResponse(
+        tmp.name,
+        media_type=mime,
+        filename=download_name,
+        background=BackgroundTask(lambda: Path(tmp.name).unlink(missing_ok=True)),
+    )
 
 
 @app.post("/api/generate")
@@ -179,14 +236,16 @@ async def stream(job_id: str):
                         return
 
                     metas = inner.get("metas") or {}
+                    raw_dur = metas.get("duration") or payload.get("audio_duration") or 0
+                    duration = raw_dur if isinstance(raw_dur, (int, float)) else 0
                     entry = {
                         "id": track_id,
                         "created_at": datetime.now(timezone.utc).isoformat(),
                         "mode": mode,
-                        "prompt": inner.get("prompt") or payload.get("prompt", ""),
+                        "prompt": inner.get("prompt") or payload.get("prompt") or payload.get("sample_query", ""),
                         "params": payload,
                         "audio_file": filename,
-                        "duration": metas.get("duration") or 0,
+                        "duration": duration,
                     }
                     history = load_history()
                     history.insert(0, entry)
@@ -211,7 +270,7 @@ async def stream(job_id: str):
 
 def main():
     import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=3000, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=3000, reload=True, reload_excludes=[".venv", "*.pyc"])
 
 
 if __name__ == "__main__":

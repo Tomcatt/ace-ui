@@ -228,19 +228,46 @@
 
     .track-duration { font-size: 0.82rem; color: var(--text-muted); flex-shrink: 0; }
 
-    .btn-download {
+    .btn-menu {
       background: none;
-      border: 1px solid var(--border);
+      border: none;
       color: var(--text-muted);
       border-radius: 6px;
-      padding: 5px 10px;
+      width: 32px;
+      height: 32px;
       cursor: pointer;
-      font-size: 0.8rem;
+      font-size: 1.2rem;
+      line-height: 1;
       flex-shrink: 0;
-      transition: border-color 0.15s, color 0.15s;
+      transition: background 0.15s, color 0.15s;
     }
+    .btn-menu:hover { background: rgba(255,255,255,0.08); color: var(--text); }
 
-    .btn-download:hover { border-color: var(--accent); color: var(--accent); }
+    .track-menu {
+      position: fixed;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      padding: 4px;
+      min-width: 160px;
+      z-index: 1000;
+    }
+    .track-menu button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      color: var(--text);
+      padding: 8px 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 0.88rem;
+    }
+    .track-menu button:hover { background: rgba(255,255,255,0.08); }
+    .track-menu button.danger { color: #ff6b6b; }
+    .track-menu button.danger:hover { background: rgba(255,107,107,0.12); }
 
     #player-bar {
       grid-area: player;
@@ -351,20 +378,16 @@
 
   <div id="custom-form">
     <div class="field">
-      <label>Style</label>
-      <input type="text" id="custom-style" placeholder="lo-fi hip hop, jazzy, chill...">
+      <label>Description / Caption</label>
+      <textarea id="custom-caption" rows="4" placeholder="A driving lo-fi hip hop track with jazzy Rhodes piano, dusty drums, and warm vinyl crackle..."></textarea>
     </div>
     <div class="field">
-      <label>Lyrics</label>
-      <textarea id="custom-lyrics" rows="5" placeholder="[Verse 1]&#10;Your lyrics here..."></textarea>
-    </div>
-    <div class="field">
-      <label>Tags</label>
+      <label>Tags <span style="color: var(--text-muted); font-weight: 400;">(comma-separated, appended to description)</span></label>
       <input type="text" id="custom-tags" placeholder="piano, vinyl crackle, soft drums">
     </div>
     <div class="field">
-      <label>Negative (avoid)</label>
-      <input type="text" id="custom-negative" placeholder="distortion, metal, aggressive">
+      <label>Lyrics <span style="color: var(--text-muted); font-weight: 400;">(leave empty for instrumental)</span></label>
+      <textarea id="custom-lyrics" rows="5" placeholder="[Verse 1]&#10;Your lyrics here..."></textarea>
     </div>
     <div class="duration-row">
       <label>Duration: <span id="duration-val">60</span>s</label>
@@ -375,14 +398,48 @@
     <div class="row">
       <div class="field">
         <label>BPM</label>
-        <input type="number" id="custom-bpm" placeholder="120" min="40" max="300">
+        <input type="number" id="custom-bpm" placeholder="auto" min="40" max="300">
+      </div>
+      <div class="field">
+        <label>Key</label>
+        <input type="text" id="custom-key" placeholder="auto (e.g. C major)">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Time signature</label>
+        <select id="custom-timesig">
+          <option value="">auto</option>
+          <option value="3">3/4</option>
+          <option value="4" selected>4/4</option>
+          <option value="6">6/8</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Vocal language</label>
+        <select id="custom-language">
+          <option value="en" selected>English</option>
+          <option value="es">Spanish</option>
+          <option value="zh">Chinese</option>
+          <option value="ja">Japanese</option>
+          <option value="ko">Korean</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="pt">Portuguese</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Steps <span style="color: var(--text-muted); font-weight: 400;">(quality)</span></label>
+        <input type="number" id="custom-steps" value="50" min="8" max="200">
       </div>
       <div class="field">
         <label>Format</label>
         <select id="custom-format">
-          <option value="mp3">MP3</option>
+          <option value="wav" selected>WAV</option>
           <option value="flac">FLAC</option>
-          <option value="wav">WAV</option>
+          <option value="mp3">MP3</option>
         </select>
       </div>
     </div>
@@ -390,6 +447,13 @@
       <span>Wide Stereo</span>
       <label class="switch">
         <input type="checkbox" id="custom-stereo">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <span>Use LM to enhance prompt</span>
+      <label class="switch">
+        <input type="checkbox" id="custom-thinking">
         <span class="slider"></span>
       </label>
     </div>
@@ -473,11 +537,75 @@
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  function download(filename) {
+  function download(filename, format) {
     const a = document.createElement('a');
-    a.href = '/audio/' + filename;
-    a.download = filename;
+    const stem = filename.replace(/\.[^.]+$/, '');
+    const ext = format || filename.split('.').pop();
+    a.href = format ? `/audio/${filename}?format=${format}` : '/audio/' + filename;
+    a.download = `${stem}.${ext}`;
     a.click();
+  }
+
+  function closeMenu() {
+    document.querySelectorAll('.track-menu').forEach(m => m.remove());
+  }
+
+  function openMenu(trackId, btn) {
+    closeMenu();
+    const track = window.__tracks[trackId];
+    if (!track) return;
+    const menu = document.createElement('div');
+    menu.className = 'track-menu';
+    menu.innerHTML = `
+      <button onclick="download('${escHtml(track.audio_file)}', 'mp3'); closeMenu();">⬇ Download MP3</button>
+      <button onclick="download('${escHtml(track.audio_file)}', 'wav'); closeMenu();">⬇ Download WAV</button>
+      <button onclick="download('${escHtml(track.audio_file)}', 'flac'); closeMenu();">⬇ Download FLAC</button>
+      <button onclick="copyPrompt('${trackId}'); closeMenu();">📋 Copy prompt</button>
+      <button onclick="renameTrack('${trackId}'); closeMenu();">✎ Rename</button>
+      <button class="danger" onclick="deleteTrack('${trackId}'); closeMenu();">🗑 Delete</button>
+    `;
+    document.body.appendChild(menu);
+    const rect = btn.getBoundingClientRect();
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.style.left = `${Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8)}px`;
+    setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0);
+  }
+
+  function copyPrompt(trackId) {
+    const t = window.__tracks[trackId];
+    if (t) navigator.clipboard.writeText(t.prompt || '');
+  }
+
+  async function renameTrack(trackId) {
+    const t = window.__tracks[trackId];
+    if (!t) return;
+    const next = prompt('Rename track:', t.prompt || '');
+    if (next == null || next === t.prompt) return;
+    const res = await fetch(`/api/track/${trackId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: next }),
+    });
+    if (!res.ok) return alert('Rename failed');
+    t.prompt = next;
+    const card = document.querySelector(`[data-id="${trackId}"] .track-title`);
+    if (card) card.textContent = next.slice(0, 80);
+    if (currentTrack?.id === trackId) document.getElementById('player-title').textContent = next.slice(0, 60);
+  }
+
+  async function deleteTrack(trackId) {
+    const t = window.__tracks[trackId];
+    if (!t) return;
+    if (!confirm(`Delete "${(t.prompt || 'track').slice(0, 60)}"? This cannot be undone.`)) return;
+    const res = await fetch(`/api/track/${trackId}`, { method: 'DELETE' });
+    if (!res.ok) return alert('Delete failed');
+    delete window.__tracks[trackId];
+    document.querySelector(`[data-id="${trackId}"]`)?.remove();
+    if (currentTrack?.id === trackId) {
+      wavesurfer.empty();
+      currentTrack = null;
+      document.getElementById('player-title').textContent = 'No track loaded';
+    }
   }
 
   function renderTrack(track, prepend = false) {
@@ -501,7 +629,7 @@
         ${track.generating ? '<div class="track-progress"><div class="track-progress-fill"></div></div>' : ''}
       </div>
       <div class="track-duration">${dur}</div>
-      ${track.generating ? '' : `<button class="btn-download" onclick="event.stopPropagation(); download('${escHtml(track.audio_file)}')">⬇</button>`}
+      ${track.generating ? '' : `<button class="btn-menu" onclick="event.stopPropagation(); openMenu('${track.id}', this)">⋯</button>`}
     `;
 
     window.__tracks = window.__tracks || {};
@@ -565,28 +693,45 @@
     if (currentMode === 'simple') {
       const prompt = document.getElementById('simple-prompt').value.trim();
       if (!prompt) { resetBtn(); return; }
-      payload = { prompt, thinking: true, _mode: 'simple' };
+      payload = {
+        sample_query: prompt,
+        vocal_language: 'en',
+        instrumental: false,
+        audio_duration: 30,
+        inference_steps: 50,
+        audio_format: 'wav',
+        _mode: 'simple',
+      };
     } else {
-      const style = document.getElementById('custom-style').value.trim();
+      const caption = document.getElementById('custom-caption').value.trim();
       const tags = document.getElementById('custom-tags').value.trim();
-      let prompt = [style, tags].filter(Boolean).join(', ');
-      if (document.getElementById('custom-stereo').checked) prompt += ', wide stereo';
-      const bpm = document.getElementById('custom-bpm').value;
+      const lyrics = document.getElementById('custom-lyrics').value;
+      const wideStereo = document.getElementById('custom-stereo').checked;
+      let prompt = [caption, tags].filter(Boolean).join(', ');
+      if (wideStereo) prompt += ', wide stereo';
+      if (!prompt) { resetBtn(); return; }
       payload = {
         prompt,
-        lyrics: document.getElementById('custom-lyrics').value,
-        lm_negative_prompt: document.getElementById('custom-negative').value || 'NO USER INPUT',
+        lyrics,
+        instrumental: !lyrics.trim(),
+        vocal_language: document.getElementById('custom-language').value,
         audio_duration: parseFloat(document.getElementById('custom-duration').value),
         audio_format: document.getElementById('custom-format').value,
-        thinking: false,
+        inference_steps: parseInt(document.getElementById('custom-steps').value) || 50,
+        thinking: document.getElementById('custom-thinking').checked,
         _mode: 'custom',
       };
+      const bpm = document.getElementById('custom-bpm').value;
       if (bpm) payload.bpm = parseInt(bpm);
+      const key = document.getElementById('custom-key').value.trim();
+      if (key) payload.key_scale = key;
+      const timesig = document.getElementById('custom-timesig').value;
+      if (timesig) payload.time_signature = timesig;
     }
 
     // Create placeholder card
     const placeholderId = 'pending-' + Date.now();
-    const placeholder = { id: placeholderId, prompt: payload.prompt, generating: true, params: payload };
+    const placeholder = { id: placeholderId, prompt: payload.prompt || payload.sample_query || '', generating: true, params: payload };
     const card = renderTrack(placeholder, true);
 
     try {
