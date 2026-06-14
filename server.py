@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
 ACESTEP_API = "http://localhost:8001"
-ACESTEP_OUTPUTS = Path.home() / "Projects/ACE-Step-1.5/.cache/acestep/tmp/api_audio"
+ACESTEP_OUTPUTS = Path.home() / "Projects/ai-music/ACE-Step-1.5/.cache/acestep/tmp/api_audio"
 HERE = Path(__file__).parent
 HISTORY_FILE = HERE / "history.json"
 
@@ -65,6 +65,19 @@ async def get_history():
 
 @app.delete("/api/track/{track_id}")
 async def delete_track(track_id: str):
+    """Soft-delete: move to trash (trashed=True). Audio file is kept."""
+    history = load_history()
+    entry = next((e for e in history if e.get("id") == track_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Track not found")
+    entry["trashed"] = True
+    save_history(history)
+    return {"trashed": track_id}
+
+
+@app.delete("/api/track/{track_id}/permanent")
+async def permanent_delete_track(track_id: str):
+    """Hard-delete: remove from history and delete audio file."""
     history = load_history()
     idx = next((i for i, e in enumerate(history) if e.get("id") == track_id), None)
     if idx is None:
@@ -77,14 +90,47 @@ async def delete_track(track_id: str):
     return {"deleted": track_id}
 
 
+@app.post("/api/track/{track_id}/restore")
+async def restore_track(track_id: str):
+    """Restore a trashed track back to the library."""
+    history = load_history()
+    entry = next((e for e in history if e.get("id") == track_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Track not found")
+    entry.pop("trashed", None)
+    save_history(history)
+    return entry
+
+
+@app.delete("/api/trash")
+async def empty_trash():
+    """Permanently delete all trashed tracks and their audio files."""
+    history = load_history()
+    kept, removed = [], []
+    for e in history:
+        if e.get("trashed"):
+            audio = ACESTEP_OUTPUTS / Path(e.get("audio_file", "")).name
+            if audio.exists():
+                audio.unlink()
+            removed.append(e["id"])
+        else:
+            kept.append(e)
+    save_history(kept)
+    return {"deleted": removed, "count": len(removed)}
+
+
 @app.patch("/api/track/{track_id}")
 async def patch_track(track_id: str, body: dict):
     history = load_history()
     entry = next((e for e in history if e.get("id") == track_id), None)
     if entry is None:
         raise HTTPException(status_code=404, detail="Track not found")
-    if "prompt" in body:
-        entry["prompt"] = str(body["prompt"])
+    for key in ("prompt", "trashed"):
+        if key in body:
+            if body[key] is None:
+                entry.pop(key, None)
+            else:
+                entry[key] = body[key]
     save_history(history)
     return entry
 

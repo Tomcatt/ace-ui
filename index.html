@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ACE-Step</title>
+  <title>RezStation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -13,8 +15,8 @@
       --surface: #1a1a1a;
       --surface2: #242424;
       --border: #2e2e2e;
-      --accent: #6c63ff;
-      --accent-hover: #5a52e0;
+      --accent: #00e5ff;
+      --accent-hover: #00b8d4;
       --text: #f0f0f0;
       --text-muted: #888;
     }
@@ -45,10 +47,12 @@
     }
 
     .logo {
-      font-size: 1.2rem;
-      font-weight: 700;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 900;
       color: var(--accent);
-      letter-spacing: -0.5px;
+      letter-spacing: 0.08em;
+      text-shadow: 0 0 8px #00e5ff, 0 0 20px rgba(0,229,255,0.5);
     }
 
     .mode-toggle {
@@ -187,7 +191,69 @@
       gap: 12px;
     }
 
-    .library-header { font-size: 1rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+    .library-header-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .library-header { font-size: 1rem; font-weight: 600; color: var(--text-muted); flex: 1; }
+    #selection-count { font-size: 0.82rem; color: var(--accent); white-space: nowrap; }
+
+    /* Custom checkbox */
+    .track-checkbox {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 17px; height: 17px;
+      border: 1.5px solid var(--border);
+      border-radius: 4px;
+      background: transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      position: relative;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .track-checkbox:hover { border-color: var(--accent); }
+    .track-checkbox:checked {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .track-checkbox:checked::after {
+      content: '✓';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      color: white;
+      line-height: 17px;
+      text-align: center;
+    }
+    .track-checkbox:indeterminate {
+      border-color: var(--accent);
+      background: rgba(108,99,255,0.3);
+    }
+
+    .track-card.selected { border-color: var(--accent); background: rgba(108,99,255,0.06); }
+
+    .btn-mass-menu {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 7px;
+      width: 30px; height: 30px;
+      cursor: pointer;
+      font-size: 1.2rem;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .btn-mass-menu:hover { color: var(--text); border-color: var(--accent); background: rgba(108,99,255,0.12); }
+    .mass-menu-sep { height: 1px; background: var(--border); margin: 3px 0; }
 
     .track-card {
       background: var(--surface);
@@ -383,6 +449,42 @@
 
     #status-banner.visible { display: flex; }
 
+    /* ── Trash / recovered ── */
+    .trash-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 20px;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+    .trash-divider::before, .trash-divider::after {
+      content: '';
+      flex: 1;
+      border-top: 1px solid var(--border);
+    }
+    .btn-empty-trash {
+      background: none;
+      border: 1px solid #ff6b6b44;
+      color: #ff6b6b;
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-empty-trash:hover { background: rgba(255,107,107,0.12); }
+    .badge-recovered {
+      font-size: 0.7rem;
+      background: rgba(255,200,60,0.15);
+      color: #ffcc44;
+      border: 1px solid rgba(255,200,60,0.25);
+      border-radius: 4px;
+      padding: 1px 6px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
     /* ── Progress bar on card ── */
     .track-progress {
       height: 3px;
@@ -405,7 +507,7 @@
 
 <div id="status-banner"><span class="spinner" style="border-top-color:#ffcc44"></span><span id="status-text"></span></div>
 <aside id="create-panel" style="position:relative">
-  <div class="logo">◆ ACE-Step</div>
+  <div class="logo">▶ RezStation</div>
 
   <div class="mode-toggle">
     <button class="active" onclick="setMode('simple')">Simple</button>
@@ -506,8 +608,21 @@
 </aside>
 
 <main id="library-panel">
-  <div class="library-header">Library</div>
+  <div class="library-header-row">
+    <input type="checkbox" class="track-checkbox" id="select-all" title="Select all" onchange="toggleSelectAll(this.checked)">
+    <span class="library-header">Library</span>
+    <span id="selection-count"></span>
+    <button class="btn-mass-menu" onclick="openMassMenu(this)" title="Actions on selected">⋯</button>
+  </div>
   <div id="track-list"></div>
+  <div id="trash-section" style="display:none">
+    <div class="trash-divider">
+      <span>🗑 Trash</span>
+      <span id="trash-count" style="color:var(--text-muted)"></span>
+      <button class="btn-empty-trash" onclick="emptyTrash()">Empty Trash</button>
+    </div>
+    <div id="trash-list"></div>
+  </div>
 </main>
 
 <footer id="player-bar">
@@ -525,7 +640,7 @@
   const wavesurfer = WaveSurfer.create({
     container: '#waveform',
     waveColor: '#444',
-    progressColor: '#6c63ff',
+    progressColor: '#00e5ff',
     height: 48,
     barWidth: 2,
     barGap: 1,
@@ -593,20 +708,27 @@
     document.querySelectorAll('.track-menu').forEach(m => m.remove());
   }
 
-  function openMenu(trackId, btn) {
+  function openMenu(trackId, btn, inTrash = false) {
     closeMenu();
     const track = window.__tracks[trackId];
     if (!track) return;
     const menu = document.createElement('div');
     menu.className = 'track-menu';
-    menu.innerHTML = `
-      <button onclick="download('${escHtml(track.audio_file)}', 'mp3'); closeMenu();">⬇ Download MP3</button>
-      <button onclick="download('${escHtml(track.audio_file)}', 'wav'); closeMenu();">⬇ Download WAV</button>
-      <button onclick="download('${escHtml(track.audio_file)}', 'flac'); closeMenu();">⬇ Download FLAC</button>
-      <button onclick="copyPrompt('${trackId}'); closeMenu();">📋 Copy prompt</button>
-      <button onclick="renameTrack('${trackId}'); closeMenu();">✎ Rename</button>
-      <button class="danger" onclick="deleteTrack('${trackId}'); closeMenu();">🗑 Delete</button>
-    `;
+    if (inTrash) {
+      menu.innerHTML = `
+        <button onclick="restoreTrack('${trackId}'); closeMenu();">↩ Restore</button>
+        <button class="danger" onclick="permanentDelete('${trackId}'); closeMenu();">✕ Delete Forever</button>
+      `;
+    } else {
+      menu.innerHTML = `
+        <button onclick="download('${escHtml(track.audio_file)}', 'mp3'); closeMenu();">⬇ Download MP3</button>
+        <button onclick="download('${escHtml(track.audio_file)}', 'wav'); closeMenu();">⬇ Download WAV</button>
+        <button onclick="download('${escHtml(track.audio_file)}', 'flac'); closeMenu();">⬇ Download FLAC</button>
+        <button onclick="copyPrompt('${trackId}'); closeMenu();">📋 Copy prompt</button>
+        <button onclick="renameTrack('${trackId}'); closeMenu();">✎ Rename</button>
+        <button class="danger" onclick="trashTrack('${trackId}'); closeMenu();">🗑 Move to Trash</button>
+      `;
+    }
     document.body.appendChild(menu);
     const rect = btn.getBoundingClientRect();
     menu.style.top = `${rect.bottom + 4}px`;
@@ -636,19 +758,78 @@
     if (currentTrack?.id === trackId) document.getElementById('player-title').textContent = next.slice(0, 60);
   }
 
-  async function deleteTrack(trackId) {
-    const t = window.__tracks[trackId];
-    if (!t) return;
-    if (!confirm(`Delete "${(t.prompt || 'track').slice(0, 60)}"? This cannot be undone.`)) return;
+  async function trashTrack(trackId) {
     const res = await fetch(`/api/track/${trackId}`, { method: 'DELETE' });
-    if (!res.ok) return alert('Delete failed');
-    delete window.__tracks[trackId];
-    document.querySelector(`[data-id="${trackId}"]`)?.remove();
+    if (!res.ok) return alert('Failed to move to trash');
+    const track = window.__tracks[trackId];
+    if (track) { track.trashed = true; }
+    document.querySelector(`#track-list [data-id="${trackId}"]`)?.remove();
+    renderTrashCard(window.__tracks[trackId]);
+    updateTrashVisibility();
     if (currentTrack?.id === trackId) {
       wavesurfer.empty();
       currentTrack = null;
       document.getElementById('player-title').textContent = 'No track loaded';
     }
+  }
+
+  async function restoreTrack(trackId) {
+    const res = await fetch(`/api/track/${trackId}/restore`, { method: 'POST' });
+    if (!res.ok) return alert('Restore failed');
+    const track = window.__tracks[trackId];
+    if (track) { delete track.trashed; }
+    document.querySelector(`#trash-list [data-id="${trackId}"]`)?.remove();
+    renderTrack(track, true);
+    updateTrashVisibility();
+  }
+
+  async function permanentDelete(trackId) {
+    if (!confirm('Delete forever? This cannot be undone.')) return;
+    const res = await fetch(`/api/track/${trackId}/permanent`, { method: 'DELETE' });
+    if (!res.ok) return alert('Delete failed');
+    delete window.__tracks[trackId];
+    document.querySelector(`#trash-list [data-id="${trackId}"]`)?.remove();
+    updateTrashVisibility();
+  }
+
+  async function emptyTrash() {
+    const count = document.querySelectorAll('#trash-list .track-card').length;
+    if (!count) return;
+    if (!confirm(`Permanently delete all ${count} trashed track${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+    const res = await fetch('/api/trash', { method: 'DELETE' });
+    if (!res.ok) return alert('Empty trash failed');
+    document.getElementById('trash-list').innerHTML = '';
+    updateTrashVisibility();
+  }
+
+  function updateTrashVisibility() {
+    const trashList = document.getElementById('trash-list');
+    const section = document.getElementById('trash-section');
+    const count = trashList.querySelectorAll('.track-card').length;
+    section.style.display = count ? 'block' : 'none';
+    document.getElementById('trash-count').textContent = count ? `(${count})` : '';
+  }
+
+  function renderTrashCard(track) {
+    if (!track) return;
+    const list = document.getElementById('trash-list');
+    const card = document.createElement('div');
+    card.className = 'track-card';
+    card.dataset.id = track.id;
+    card.onclick = () => loadTrack(track);
+    const title = escHtml((track.prompt || 'Untitled').slice(0, 80));
+    const dur = track.duration ? fmt(track.duration) : '?';
+    card.innerHTML = `
+      <button class="play-btn" onclick="event.stopPropagation(); loadTrack(window.__tracks['${track.id}'])">▶</button>
+      <div class="track-info">
+        <div class="track-title" style="color:var(--text-muted)">${title}</div>
+        <div class="track-meta">In Trash</div>
+      </div>
+      <div class="track-duration">${dur}</div>
+      <button class="btn-menu" onclick="event.stopPropagation(); openMenu('${track.id}', this, true)">⋯</button>
+    `;
+    list.appendChild(card);
+    updateTrashVisibility();
   }
 
   function renderTrack(track, prepend = false) {
@@ -659,15 +840,18 @@
     if (!track.generating) card.onclick = () => loadTrack(track);
 
     const dur = track.duration ? fmt(track.duration) : (track.generating ? '' : '?');
-    const meta = track.params?.lyrics ? 'Custom mode' : 'Simple mode';
+    const isRecovered = track.mode === 'recovered';
+    const meta = isRecovered ? 'Recovered' : (track.params?.lyrics ? 'Custom mode' : 'Simple mode');
+    const recoveredBadge = isRecovered ? '<span class="badge-recovered">recovered</span>' : '';
     const title = escHtml((track.prompt || 'Generating...').slice(0, 80));
 
     card.innerHTML = `
+      ${track.generating ? '<div style="width:17px;flex-shrink:0"></div>' : `<input type="checkbox" class="track-checkbox" data-check="${track.id}" onclick="event.stopPropagation(); toggleSelect('${track.id}', this)">`}
       <button class="play-btn" ${track.generating ? 'disabled' : `onclick="event.stopPropagation(); loadTrack(window.__tracks['${track.id}'])"`}>
         ${track.generating ? '<span class="spinner"></span>' : '▶'}
       </button>
       <div class="track-info">
-        <div class="track-title">${title}</div>
+        <div class="track-title">${title}${recoveredBadge}</div>
         <div class="track-meta track-status">${track.generating ? 'Starting...' : meta}</div>
         ${track.generating ? '<div class="track-progress"><div class="track-progress-fill"></div></div>' : ''}
       </div>
@@ -699,7 +883,7 @@
       const banner = document.getElementById('status-banner');
       const text = document.getElementById('status-text');
       if (d.status === 'unreachable') {
-        text.textContent = 'ACE-Step API is not running on port 8001';
+        text.textContent = 'ACE-Step engine is not running on port 8001';
         banner.classList.add('visible');
       } else if (!d.models_initialized) {
         text.textContent = 'Models not loaded — first generation will trigger download & load (~1–2 min)';
@@ -721,7 +905,13 @@
   async function loadHistory() {
     const res = await fetch('/api/history');
     const tracks = await res.json();
-    tracks.forEach(t => renderTrack(t));
+    tracks.forEach(t => {
+      window.__tracks = window.__tracks || {};
+      window.__tracks[t.id] = t;
+      if (t.trashed) renderTrashCard(t);
+      else renderTrack(t);
+    });
+    updateTrashVisibility();
   }
 
   async function generate() {
@@ -838,6 +1028,94 @@
     const btn = document.getElementById('btn-generate');
     btn.disabled = false;
     btn.textContent = 'Generate';
+  }
+
+  // ── Selection state ──
+  const selectedTracks = new Set();
+
+  function toggleSelect(trackId, cb) {
+    if (cb.checked) selectedTracks.add(trackId);
+    else selectedTracks.delete(trackId);
+    document.querySelector(`[data-id="${trackId}"]`)?.classList.toggle('selected', cb.checked);
+    updateSelectionUI();
+  }
+
+  function toggleSelectAll(checked) {
+    document.querySelectorAll('#track-list .track-card:not(.generating)').forEach(card => {
+      const id = card.dataset.id;
+      const cb = card.querySelector('.track-checkbox');
+      if (!cb) return;
+      cb.checked = checked;
+      card.classList.toggle('selected', checked);
+      if (checked) selectedTracks.add(id);
+      else selectedTracks.delete(id);
+    });
+    updateSelectionUI();
+  }
+
+  function updateSelectionUI() {
+    const total = document.querySelectorAll('#track-list .track-card:not(.generating)').length;
+    const n = selectedTracks.size;
+    const countEl = document.getElementById('selection-count');
+    countEl.textContent = n > 0 ? `${n} selected` : '';
+    const sa = document.getElementById('select-all');
+    if (n === 0) { sa.checked = false; sa.indeterminate = false; }
+    else if (n === total) { sa.checked = true; sa.indeterminate = false; }
+    else { sa.checked = false; sa.indeterminate = true; }
+  }
+
+  function openMassMenu(btn) {
+    closeMenu();
+    const n = selectedTracks.size;
+    const label = n > 0 ? `${n} selected` : 'No tracks selected';
+    const disabled = n === 0;
+    const menu = document.createElement('div');
+    menu.className = 'track-menu';
+    menu.innerHTML = `
+      <div style="padding:6px 12px;font-size:0.78rem;color:var(--text-muted)">${label}</div>
+      <div class="mass-menu-sep"></div>
+      <button ${disabled ? 'disabled style="opacity:0.4;cursor:default"' : ''} onclick="massDownload('mp3'); closeMenu();">⬇ Download as MP3</button>
+      <button ${disabled ? 'disabled style="opacity:0.4;cursor:default"' : ''} onclick="massDownload('wav'); closeMenu();">⬇ Download as WAV</button>
+      <button ${disabled ? 'disabled style="opacity:0.4;cursor:default"' : ''} onclick="massDownload('flac'); closeMenu();">⬇ Download as FLAC</button>
+      <div class="mass-menu-sep"></div>
+      <button class="danger" ${disabled ? 'disabled style="opacity:0.4;cursor:default"' : ''} onclick="massTrash(); closeMenu();">🗑 Move to Trash</button>
+    `;
+    document.body.appendChild(menu);
+    const rect = btn.getBoundingClientRect();
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.style.left = `${Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8)}px`;
+    setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0);
+  }
+
+  async function massDownload(format) {
+    if (selectedTracks.size === 0) return;
+    const ids = [...selectedTracks];
+    for (let i = 0; i < ids.length; i++) {
+      const t = window.__tracks[ids[i]];
+      if (t) {
+        setTimeout(() => download(t.audio_file, format), i * 400);
+      }
+    }
+  }
+
+  async function massTrash() {
+    if (selectedTracks.size === 0) return;
+    const ids = [...selectedTracks];
+    for (const id of ids) {
+      const res = await fetch(`/api/track/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        const track = window.__tracks[id];
+        if (track) { track.trashed = true; }
+        document.querySelector(`#track-list [data-id="${id}"]`)?.remove();
+        renderTrashCard(window.__tracks[id]);
+        selectedTracks.delete(id);
+      }
+    }
+    if (currentTrack && !window.__tracks[currentTrack.id]?.trashed === false) {
+      // current track still exists, fine
+    }
+    updateTrashVisibility();
+    updateSelectionUI();
   }
 
   // Boot
