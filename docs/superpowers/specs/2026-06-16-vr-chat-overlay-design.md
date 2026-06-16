@@ -91,6 +91,7 @@ timestamps = true                # Show message timestamps
 viewer_count_bar = true          # Show viewer count in status bar
 join_leave_alerts = true         # Show join/leave events in chat (Twitch only)
 default_filter = "all"           # "all" | "twitch" | "youtube"
+word_wrap = true                 # Wrap long messages onto next line; false clips with ellipsis
 
 [alerts]
 # Each alert type can be toggled independently
@@ -119,6 +120,7 @@ fade_speed = "medium"            # "slow" | "medium" | "fast"
 - **Filter tabs** at top: All / Twitch / YouTube
 - **Platform indicator** on each message: `■` (purple) for Twitch, `▶` (red) for YouTube
 - **Timestamps** — toggleable, shown in muted colour before each message
+- **Word wrap** — toggleable; default on so long messages wrap cleanly at any overlay size; off clips with ellipsis
 - **Right-click a message** → mod action menu (ban / timeout / delete)
 
 ### Join / Leave Notifications (Twitch only)
@@ -144,9 +146,11 @@ Each alert type independently toggleable in the cog and web UI.
 
 ### Status Bar (bottom of overlay)
 ```
-■ Twitch  1,204 viewers    ▶ YouTube  847 viewers    Twitch 2d 14h · YT 6d 3h
+■ 1,204    ▶ 847    ● 3h:24m:15s    Twitch 2d 14h · YT 6d 3h
 ```
-Shows live viewer counts (polled every ~30s) and token expiry countdowns.
+- **Viewer counts** — Twitch and YouTube, polled every ~30s
+- **Stream timer** — `xxh:xxm:xxs` elapsed since stream started. Pulled from Twitch `started_at` and YouTube `actualStartTime` on the same poll as viewer counts. If both platforms are live, shows the earlier start time. Red dot `●` confirms stream is active.
+- **Token countdowns** — days/hours until each OAuth token expires
 
 ---
 
